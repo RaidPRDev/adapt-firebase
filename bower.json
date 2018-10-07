@@ -1,12 +1,12 @@
 {
-  "name": "adapt-firebase",
+  "name": "adapt-sr-firebase",
   "version": "1.0.0",
   "homepage": "https://github.com/adaptlearning/adapt-extension",
   "issues": "https://github.com/adaptlearning/adapt-extension/issues",
   "displayName" : "Firebase Extension",
   "extension" : "extension",
   "description": "Firebase Extension",
-  "main": "/js/adapt-firebase.js",
+  "main": "/js/adapt-sr-firebase.js",
   "keywords": [
     "adapt-plugin",
     "adapt-extension"

@@ -1,26 +1,49 @@
-define('extensions/adapt-sr-firebase/js/adapt-sr-firebase',
+define('extensions/adapt-firebase/js/adapt-firebase',
     ['require','coreJS/adapt',
+        'coreJS/libraries/underscore.min.js',
         '../libraries/firebase.js'],
     function(require) {
 
     var Adapt = require('coreJS/adapt');
-    var fb = require('../libraries/firebase.js');
 
     // Listen to when the data is all loaded
-    Adapt.once('app:dataReady', onPreFirebaseInitialize);
+    Adapt.on('app:dataReady', onPreFirebaseInitialize);
+    // Adapt.on('postRemove', onPostRemove);
+    //Adapt.on('pageView:preRender', onAdaptPagePreRender);
+
+    function onPostRemove() {
+        console.log("onPostRemove()");
+    }
+
+    function onAdaptPagePreRender() {
+        console.log("onAdaptPagePreRender()");
+        console.log("=> firebase:", Adapt.firebase);
+
+        if (Adapt.firebase !== null)
+        {
+            Adapt.trigger("firebase:signedin", {
+                success: true,
+                user: Adapt.firebase.user
+            });
+        }
+    }
 
     function onPreFirebaseInitialize()
     {
-        // check if FB exists and is enabled
-        var firebase = Adapt.course.get("_firebase");
+        console.log("onPreFirebaseInitialize()");
 
-        if (firebase) {
-            if (!firebase._isEnabled) {
+        // check if FB exists and is enabled
+        var firebaseConfig = Adapt.course.get("_firebase");
+
+        if (firebaseConfig) {
+            if (!firebaseConfig._isEnabled) {
                 console.log("Firebase Disabled");
                 return;
             }
 
             onInitializeFirebase();
+
+
         } else {
             onFirebaseStartupError('Firebase Extension not found. Please add "_firebase._isEnabled" to course.json"');
         }
@@ -37,101 +60,168 @@ define('extensions/adapt-sr-firebase/js/adapt-sr-firebase',
 
     function onInitializeFirebase()
     {
-        console.log("Firebase.onInitializeFirebase()");
+        console.log("onInitializeFirebase()");
 
-        var config = {
+        Adapt.firebase = new FirebaseApplication();
+        Adapt.firebase.initializeApp();
+    }
+
+    /*
+    To protect your project from abuse, Firebase limits the number of new email/password and anonymous
+    sign-ups that your application can have from the same IP address in a short period of time.
+    You can request and schedule temporary changes to this quota from the Firebase console
+     */
+
+    let FirebaseApplication = Backbone.View.extend({
+
+        config: {
             apiKey: "AIzaSyCBkLa_WqQcanOEcm8YK3CgkYZbqWE463s",
             authDomain: "project-f759d.firebaseapp.com",
             databaseURL: "https://project-f759d.firebaseio.com",
             projectId: "project-f759d",
             storageBucket: "project-f759d.appspot.com",
             messagingSenderId: "92076851953"
-        };
+        },
 
-        firebase.initializeApp(config);
+        api: null,
+        database: null,
+        user: null,
+        userLocation: "Somewhere",
+        LDAP: "LDAP",
 
-        firebase.auth().signInAnonymously().catch(function(error) {
-            // Handle Errors here.
-            var errorCode = error.code;
-            var errorMessage = error.message;
+        initializeApp: function() {
 
-            console.log("errorCode:", errorCode);
-            console.log("errorMessage:", errorMessage);
+            this.api = firebase;
 
-            // ...
-        });
+            console.log("Firebase.Ext.initializeApp().version:", this.api.SDK_VERSION);
 
-        firebase.auth().onAuthStateChanged(function(user) {
+            this.api.initializeApp(this.config);
+            this.authorizeAnonymousUser();
+            // this.setAuthPersistence();
+        },
 
-            console.log("onAuthStateChanged.user:", user);
+        authorizeAnonymousUser: function() {
+
+            this.initializeAnonymousEvents();
+            this.setAnonymousAuthPersistence();
+        },
+
+        onRemoveAuthStateChanged:undefined,
+        onSetAuthPersistenceSuccessEvent:undefined,
+        onSetAuthPersistenceErrorEvent:undefined,
+        onAnonymousAuthStateChangedEvent:undefined,
+
+        initializeAnonymousEvents: function() {
+
+            this.removeAnonymousEvents();
+
+            if (this.onSetAuthPersistenceSuccessEvent === undefined)
+                this.onSetAuthPersistenceSuccessEvent = _.bind(this.onSetAuthPersistenceSuccess, this);
+
+            if (this.onSetAuthPersistenceErrorEvent === undefined)
+                this.onSetAuthPersistenceErrorEvent = _.bind(this.onSetAuthPersistenceError, this);
+
+            if (this.onAnonymousAuthStateChangedEvent === undefined)
+                this.onAnonymousAuthStateChangedEvent = _.bind(this.onAnonymousAuthStateChanged, this);
+
+        },
+
+        removeAnonymousEvents: function() {
+
+            console.log("Firebase.Ext.resetEvents()");
+
+            this.onSetAuthPersistenceSuccessEvent = undefined;
+            this.onSetAuthPersistenceErrorEvent = undefined;
+            this.onAnonymousAuthStateChangedEvent = undefined;
+        },
+
+        setAnonymousAuthPersistence: function() {
+
+            console.log("Firebase.Ext.setAnonymousAuthPersistence()");
+
+            // SESSION: Existing and future Auth states are now persisted in the current
+            // session only. Closing the window would clear any existing state even
+            // if a user forgets to sign out.
+            this.api.auth().setPersistence(this.api.auth.Auth.Persistence.SESSION)
+                .then(this.onSetAuthPersistenceSuccessEvent)
+                .catch(this.onSetAuthPersistenceErrorEvent);
+        },
+
+        onSetAuthPersistenceSuccess: function() {
+
+            console.log("Firebase.Ext.onSetAuthPersistenceSuccess()");
+
+            return this.api.auth().onAuthStateChanged(this.onAnonymousAuthStateChangedEvent);
+        },
+
+        onSetAuthPersistenceError: function(error) {
+
+            console.log("Firebase.Ext.onSetAuthPersistenceError().error:", error);
+
+            Adapt.trigger("firebase:signedin", {
+                success:false,
+                error: error
+            });
+        },
+
+        onAnonymousAuthStateChanged: function(user) {
+
+            console.log("Firebase.Ext.onAnonymousAuthStateChanged()");
 
             if (user) {
-                // User is signed in.
-                Adapt.fbIsAnonymous = user.isAnonymous;
-                Adapt.fbUID = user.uid;
+                console.log("=> uid:", user.uid, ", isAnonymous:", user.isAnonymous);
 
-                // var userRef = firebase.child(firebase.users);
-                //var useridRef = userRef.child(firebase.userid);
+                this.initializeUserDatabase(user);
 
-                console.log("onAuthStateChanged.isAnonymous:", Adapt.fbIsAnonymous);
-                console.log("onAuthStateChanged.uid:", Adapt.fbUID);
-                //console.log("onAuthStateChanged.userRef:", userRef);
-                //console.log("onAuthStateChanged.useridRef:", useridRef);
-
-                /*useridRef.set({
-                    locations: "",
-                    theme: "",
-                    colorScheme: "",
-                    food: ""
-                });*/
+                Adapt.trigger("firebase:signedin", {
+                    success: true,
+                    user: user
+                });
 
             } else {
-                // User is signed out.
-                // ...
-                console.log("onAuthStateChanged.User is signed out.");
+                // User is not signed in, sign in anonymously.
+                console.error("Firebase.Ext.user is not signed in");
+                this.signInAnonymously();
             }
-            // ...
-        });
+        },
 
-        Adapt.fb = firebase.database();
-        Adapt.email = "email@domain.com";
-        Adapt.fullName = makeFirebaseUniqueId();
-        Adapt.userLocation = "Somewhere";
-        Adapt.userLDAP = "LDAP";
+        signInAnonymously: function(onSucess, onError) {
 
-    }
+            console.log("Firebase.Ext.signInAnonymously()");
 
-    function makeFirebaseUniqueId()
-    {
-        var cookie = getFirebaseCookie("userid");
+            if (onSucess === undefined) onSucess = _.bind(this.onSignedInAnonymouslySuccess, this);
+            if (onError === undefined) onError = _.bind(this.onSignInAnonymouslyError, this);
 
-        console.log("FIREBASE.makeid().cookie:", cookie);
+            this.api.auth().signInAnonymously()
+                .then(onSucess)
+                .catch(onError);
 
-        if(cookie) return cookie;
+        },
 
-        var text = "";
-        var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        onSignedInAnonymouslySuccess: function(userInfo) {
 
-        for (var i = 0; i < 16; i++)
-            text += possible.charAt(Math.floor(Math.random() * possible.length));
+            console.log("Firebase.Ext.onSignedInAnonymouslySuccess()");
+            console.log("=> uid:", userInfo.uid, ", isAnonymous:", userInfo.isAnonymous);
 
-        setFirebaseCookie("userid", text, 5);
+            this.initializeUserDatabase(userInfo);
+        },
 
-        return text;
-    }
+        onSignInAnonymouslyError: function(error) {
+            console.log("Firebase.onSignInAnonymouslyError()", error);
+            console.log("=> code:", error.code, ", message:", error.message);
+        },
 
-    function getFirebaseCookie(name) {
-        console.log("FIREBASE.makeid().getCookie:", name);
-        match = document.cookie.match(new RegExp(name + '=([^;]+)'));
-        if (match) return match[1];
-    }
+        initializeUserDatabase: function(userInfo) {
+            console.log("Firebase.Ext.initializeUserDatabase()");
 
-    function setFirebaseCookie(cname, cvalue, exdays) {
-        console.log("FIREBASE.makeid().setCookie:", cname, ' ', cvalue, ' ', exdays);
-        var d = new Date();
-        d.setTime(d.getTime() + (exdays*24*60*60*1000));
-        var expires = "expires="+ d.toUTCString();
-        document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
-    }
+            this.database = this.api.database();
+            this.user = userInfo;
+            const updateUserToDatabase = this.database.ref('user_anonymous/' + this.user.uid).set({
+                uid: this.user.uid,
+                date: Date.now()
+            });
+        }
+    });
+
 
 });
