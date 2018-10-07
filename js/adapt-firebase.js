@@ -8,8 +8,6 @@ define('extensions/adapt-firebase/js/adapt-firebase',
 
     // Listen to when the data is all loaded
     Adapt.on('app:dataReady', onPreFirebaseInitialize);
-    // Adapt.on('postRemove', onPostRemove);
-    //Adapt.on('pageView:preRender', onAdaptPagePreRender);
 
     function onPostRemove() {
         console.log("onPostRemove()");
@@ -75,12 +73,12 @@ define('extensions/adapt-firebase/js/adapt-firebase',
     let FirebaseApplication = Backbone.View.extend({
 
         config: {
-            apiKey: "AIzaSyCBkLa_WqQcanOEcm8YK3CgkYZbqWE463s",
-            authDomain: "project-f759d.firebaseapp.com",
-            databaseURL: "https://project-f759d.firebaseio.com",
-            projectId: "project-f759d",
-            storageBucket: "project-f759d.appspot.com",
-            messagingSenderId: "92076851953"
+            apiKey: "",
+            authDomain: "",
+            databaseURL: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: ""
         },
 
         api: null,
@@ -97,7 +95,6 @@ define('extensions/adapt-firebase/js/adapt-firebase',
 
             this.api.initializeApp(this.config);
             this.authorizeAnonymousUser();
-            // this.setAuthPersistence();
         },
 
         authorizeAnonymousUser: function() {
